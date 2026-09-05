@@ -1,41 +1,52 @@
+import os
+
+import requests
 from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-PAGE = '''<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pico 2 W Cloud Server</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 560px; margin: 48px auto; padding: 0 20px; }
-    .card { border: 1px solid #ddd; border-radius: 16px; padding: 24px; }
-    button { font-size: 18px; padding: 12px 18px; margin-right: 8px; }
-    #status { margin-top: 18px; font-weight: 700; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>☁️ Pico 2 W Cloud Server</h1>
-    <p>手機已經連上 Vercel Server。</p>
-    <button onclick="ping()">測試 Server</button>
-    <div id="status">尚未測試</div>
-  </div>
-  <script>
-    async function ping() {
-      const r = await fetch('/api/ping');
-      const data = await r.json();
-      document.getElementById('status').textContent = data.message;
-    }
-  </script>
-</body>
-</html>'''
+UPSTASH_URL = os.environ["UPSTASH_KV_REST_API_URL"]
+UPSTASH_TOKEN = os.environ["UPSTASH_KV_REST_API_TOKEN"]
+
+headers = {
+    "Authorization": f"Bearer {UPSTASH_TOKEN}",
+    "Content-Type": "application/json",
+}
+
+
+def redis_command(command):
+    response = requests.post(UPSTASH_URL, headers=headers, json=command, timeout=10)
+    response.raise_for_status()
+    return response.json()
+
 
 @app.get("/")
 def home():
-    return PAGE
+    return """
+    <h1>Pico Cloud Remote Control</h1>
+    <p><a href="/api/on"><button style="font-size:30px">LED ON</button></a></p>
+    <p><a href="/api/off"><button style="font-size:30px">LED OFF</button></a></p>
+    """
+
+
+@app.get("/api/on")
+def led_on():
+    redis_command(["SET", "command", "LED_ON"])
+    return jsonify(ok=True, command="LED_ON")
+
+
+@app.get("/api/off")
+def led_off():
+    redis_command(["SET", "command", "LED_OFF"])
+    return jsonify(ok=True, command="LED_OFF")
+
+
+@app.get("/api/command")
+def get_command():
+    result = redis_command(["GET", "command"])
+    return jsonify(command=result.get("result") or "LED_OFF")
+
 
 @app.get("/api/ping")
 def ping():
-    return jsonify(ok=True, message="手機 ↔ Vercel Server：連線成功！")
+    return jsonify(ok=True, message="Pico ↔ Vercel Server：連線成功！")
